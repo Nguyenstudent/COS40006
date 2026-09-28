@@ -35,7 +35,6 @@
 
     <Feature Id="Main" Title="Grade Tracker" Level="1">
       <ComponentGroupRef Id="AppComponents" />
-      <ComponentGroupRef Id="ShortcutComponents" />
     </Feature>
 
     <!-- Standard wizard UI that lets the user choose the install folder. -->

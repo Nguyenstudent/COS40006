@@ -1,9 +1,7 @@
 <WixLocalization Culture="en-US" xmlns="http://wixtoolset.org/schemas/v4/wxl">
-  <!-- TODO: put your own name here (shown in Settings > Apps and used for the install folder) -->
-  <String Id="Manufacturer" Value="YourName" />
+  <String Id="Manufacturer" Value="Nguyen Tuan Kiet" />
 
-  <!-- TODO: put your public GitHub repository URL here -->
-  <String Id="ProjectUrl" Value="https://github.com/YOUR-USERNAME/GradeTracker" />
+  <String Id="ProjectUrl" Value="https://github.com/Nguyenstudent/COS40006" />
 
   <String Id="DowngradeError" Value="A newer version of [ProductName] is already installed." />
   <String Id="DotNetMissing" Value="Grade Tracker needs the .NET 8 Desktop Runtime (x64). Download it from https://dotnet.microsoft.com/download/dotnet/8.0 (choose '.NET Desktop Runtime', x64), install it, then run this installer again." />

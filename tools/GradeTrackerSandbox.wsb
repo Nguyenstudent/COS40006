@@ -3,7 +3,7 @@
 <Configuration>
   <MappedFolders>
     <MappedFolder>
-      <HostFolder>C:\dev\GradeTracker\installer\GradeTracker.Installer\bin</HostFolder>
+      <HostFolder>D:\COS40006\W1\GradeTracker\installer\GradeTracker.Installer\bin</HostFolder>
       <SandboxFolder>C:\Installer</SandboxFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>

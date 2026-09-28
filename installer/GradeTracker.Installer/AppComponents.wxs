@@ -4,9 +4,21 @@
          Component GUIDs are generated automatically by WiX from the file path. -->
     <ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
 
-      <!-- The executable (apphost) and the main application assembly -->
+      <!-- The executable (apphost) and the main application assembly.
+           The Start menu shortcut is ADVERTISED and lives in the same component as the exe:
+           - separate shortcut component          -> warning WIX1076 / ICE69
+           - non-advertised shortcut in this comp -> errors ICE43 + ICE57 -->
       <Component>
-        <File Id="GradeTrackerExe" Source="$(var.AppPublishDir)GradeTracker.exe" KeyPath="yes" />
+        <File Id="GradeTrackerExe" Source="$(var.AppPublishDir)GradeTracker.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut"
+                    Directory="AppMenuFolder"
+                    Advertise="yes"
+                    Icon="AppIcon.ico"
+                    Name="!(bind.Property.ProductName)"
+                    Description="Track unit marks, WAM and GPA"
+                    WorkingDirectory="INSTALLFOLDER" />
+        </File>
+        <RemoveFolder Id="RemoveAppMenuFolder" Directory="AppMenuFolder" On="uninstall" />
       </Component>
       <Component>
         <File Source="$(var.AppPublishDir)GradeTracker.dll" />
@@ -31,25 +43,6 @@
       <!-- Third-party dependency from NuGet -->
       <Component>
         <File Source="$(var.AppPublishDir)Newtonsoft.Json.dll" />
-      </Component>
-    </ComponentGroup>
-
-    <!-- Start menu shortcut. A per-user registry value is used as the KeyPath
-         (Windows Installer rule ICE43 for shortcut components). -->
-    <ComponentGroup Id="ShortcutComponents" Directory="AppMenuFolder">
-      <Component Id="StartMenuShortcutComponent">
-        <Shortcut Id="StartMenuShortcut"
-                  Name="!(bind.Property.ProductName)"
-                  Description="Track unit marks, WAM and GPA"
-                  Target="[#GradeTrackerExe]"
-                  WorkingDirectory="INSTALLFOLDER" />
-        <RemoveFolder Id="RemoveAppMenuFolder" On="uninstall" />
-        <RegistryValue Root="HKCU"
-                       Key="Software\GradeTracker"
-                       Name="StartMenuShortcut"
-                       Type="integer"
-                       Value="1"
-                       KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>

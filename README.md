@@ -108,6 +108,8 @@ upgrade (bump `AppVersion` to 1.0.1, rebuild, install over the top), uninstall.
 | App: "You must install or update .NET to run this application" | Runtime check removed/bypassed | Same as above |
 | `.wixproj` won't load in VS | HeatWave missing/old | Install/update HeatWave (supports WiX v7) |
 | Save error / `UnauthorizedAccessException` | Writing into Program Files | App writes to `%LOCALAPPDATA%` instead (by design) |
+| `WIX1076: ICE69: Mismatched component reference` | Shortcut in its own component points at the exe in another component | Put the shortcut inside the exe's component |
+| `ICE43` / `ICE57` after moving the shortcut | Non-advertised shortcut needs an HKCU KeyPath, but the exe is the KeyPath | Make the shortcut advertised (`Advertise="yes"` + `Icon`) |
 | "A newer version is already installed" | Downgrade blocked by `MajorUpgrade` | Uninstall first or raise the version |
 
 ## 5. Microsoft Store
