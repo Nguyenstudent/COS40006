@@ -1,0 +1,30 @@
+<Project Sdk="WixToolset.Sdk/7.0.0">
+
+  <PropertyGroup>
+    <!-- WiX v7 refuses to build (error WIX7015) until the OSMF EULA is accepted.
+         Setting this property accepts it for this project. -->
+    <AcceptEula>wix7</AcceptEula>
+
+    <OutputName>GradeTrackerSetup</OutputName>
+    <InstallerPlatform>x64</InstallerPlatform>
+
+    <!-- Version stamped into the MSI. Increase it for every release so
+         MajorUpgrade replaces the old version. -->
+    <AppVersion>1.0.0</AppVersion>
+
+    <!-- Folder produced by build.ps1 (dotnet publish). -->
+    <AppPublishDir>$(MSBuildProjectDirectory)\..\..\publish\</AppPublishDir>
+    <AppIcon>$(MSBuildProjectDirectory)\..\..\src\GradeTracker.App\app.ico</AppIcon>
+
+    <!-- Preprocessor variables available in .wxs files as $(var.Name) -->
+    <DefineConstants>AppVersion=$(AppVersion);AppPublishDir=$(AppPublishDir);AppIcon=$(AppIcon);LicenseRtf=$(MSBuildProjectDirectory)\License.rtf</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Installer wizard dialogs (Welcome, License, Install folder, Progress, Finish) -->
+    <PackageReference Include="WixToolset.UI.wixext" Version="7.0.0" />
+    <!-- .NET runtime detection (DotNetCompatibilityCheck) -->
+    <PackageReference Include="WixToolset.Netfx.wixext" Version="7.0.0" />
+  </ItemGroup>
+
+</Project>

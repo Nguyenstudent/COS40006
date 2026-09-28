@@ -1,0 +1,56 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <!-- One component per file, so each DLL can be serviced (patched) independently.
+         Component GUIDs are generated automatically by WiX from the file path. -->
+    <ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
+
+      <!-- The executable (apphost) and the main application assembly -->
+      <Component>
+        <File Id="GradeTrackerExe" Source="$(var.AppPublishDir)GradeTracker.exe" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.AppPublishDir)GradeTracker.dll" />
+      </Component>
+
+      <!-- .NET host files: tell the host which runtime version and which DLLs to load -->
+      <Component>
+        <File Source="$(var.AppPublishDir)GradeTracker.runtimeconfig.json" />
+      </Component>
+      <Component>
+        <File Source="$(var.AppPublishDir)GradeTracker.deps.json" />
+      </Component>
+
+      <!-- Our own class libraries -->
+      <Component>
+        <File Source="$(var.AppPublishDir)GradeTracker.Core.dll" />
+      </Component>
+      <Component>
+        <File Source="$(var.AppPublishDir)GradeTracker.Data.dll" />
+      </Component>
+
+      <!-- Third-party dependency from NuGet -->
+      <Component>
+        <File Source="$(var.AppPublishDir)Newtonsoft.Json.dll" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Start menu shortcut. A per-user registry value is used as the KeyPath
+         (Windows Installer rule ICE43 for shortcut components). -->
+    <ComponentGroup Id="ShortcutComponents" Directory="AppMenuFolder">
+      <Component Id="StartMenuShortcutComponent">
+        <Shortcut Id="StartMenuShortcut"
+                  Name="!(bind.Property.ProductName)"
+                  Description="Track unit marks, WAM and GPA"
+                  Target="[#GradeTrackerExe]"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveAppMenuFolder" On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\GradeTracker"
+                       Name="StartMenuShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

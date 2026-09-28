@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Class library: compiled to GradeTracker.Data.dll.
+       Depends on GradeTracker.Core.dll (our code) and
+       Newtonsoft.Json.dll (third-party NuGet dependency). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GradeTracker.Data</RootNamespace>
+    <AssemblyName>GradeTracker.Data</AssemblyName>
+    <Version>1.0.0</Version>
+    <Description>Saves and loads unit results as JSON.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GradeTracker.Core\GradeTracker.Core.csproj" />
+  </ItemGroup>
+
+</Project>

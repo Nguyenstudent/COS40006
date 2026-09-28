@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Windows Forms executable: compiled to GradeTracker.exe (+ GradeTracker.dll).
+       At run time it loads GradeTracker.Core.dll, GradeTracker.Data.dll
+       and Newtonsoft.Json.dll from its own folder. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GradeTracker.App</RootNamespace>
+    <AssemblyName>GradeTracker</AssemblyName>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Product>Grade Tracker</Product>
+    <Description>Track unit marks, WAM and GPA.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GradeTracker.Core\GradeTracker.Core.csproj" />
+    <ProjectReference Include="..\GradeTracker.Data\GradeTracker.Data.csproj" />
+  </ItemGroup>
+
+</Project>

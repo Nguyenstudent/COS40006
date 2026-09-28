@@ -1,0 +1,11 @@
+<!-- Double-click to open Windows Sandbox (a clean, throw-away Windows) with the
+     installer folder mapped to C:\Installer. Edit HostFolder to match your path. -->
+<Configuration>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\dev\GradeTracker\installer\GradeTracker.Installer\bin</HostFolder>
+      <SandboxFolder>C:\Installer</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+</Configuration>

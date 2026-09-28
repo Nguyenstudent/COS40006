@@ -1,0 +1,45 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:netfx="http://wixtoolset.org/schemas/v4/wxs/netfx">
+
+  <!-- One MSI package. UpgradeCode must NEVER change between versions:
+       Windows Installer uses it to recognise older versions to upgrade. -->
+  <Package Name="Grade Tracker"
+           Manufacturer="!(loc.Manufacturer)"
+           Version="$(var.AppVersion)"
+           UpgradeCode="214765c7-380f-4542-9049-9b702fbe91e0"
+           Scope="perMachine">
+
+    <!-- Installing a newer version removes the older one automatically;
+         installing an older version over a newer one is blocked. -->
+    <MajorUpgrade DowngradeErrorMessage="!(loc.DowngradeError)" />
+
+    <!-- Put the compressed files (cabinet) inside the .msi -> single-file installer. -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Icon shown in Settings > Apps / Add or Remove Programs -->
+    <Icon Id="AppIcon.ico" SourceFile="$(var.AppIcon)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="!(loc.ProjectUrl)" />
+
+    <!-- DEPENDENCY CHECK: the app is framework-dependent, so the target PC needs
+         the .NET 8 Desktop Runtime (x64). The Netfx extension runs a check and
+         sets DOTNETDESKTOP8 to "0" when a compatible runtime is found. -->
+    <netfx:DotNetCompatibilityCheck Property="DOTNETDESKTOP8"
+                                    RuntimeType="desktop"
+                                    Platform="x64"
+                                    Version="8.0.0"
+                                    RollForward="minor" />
+    <Launch Condition="Installed OR DOTNETDESKTOP8 = &quot;0&quot;"
+            Message="!(loc.DotNetMissing)" />
+
+    <Feature Id="Main" Title="Grade Tracker" Level="1">
+      <ComponentGroupRef Id="AppComponents" />
+      <ComponentGroupRef Id="ShortcutComponents" />
+    </Feature>
+
+    <!-- Standard wizard UI that lets the user choose the install folder. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+  </Package>
+</Wix>
