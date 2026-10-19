@@ -1,0 +1,30 @@
+# Study Log: two containers on a private network created by Docker Compose.
+#   PC  : set DOCKERHUB_USER, then  docker compose build  and  docker compose up -d
+#   EC2 : export DOCKERHUB_USER=<id>, then  docker compose pull  and  docker compose up -d
+name: studylog
+
+services:
+  web:
+    image: ${DOCKERHUB_USER:-local}/studylog:1.0
+    build: .
+    ports:
+      - "80:8000"                 # only the web app is published; Redis is not
+    depends_on:
+      redis:
+        condition: service_healthy  # start web only after Redis answers PING
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]   # write every change to disk
+    volumes:
+      - redis-data:/data          # data survives docker compose down / up
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  redis-data:

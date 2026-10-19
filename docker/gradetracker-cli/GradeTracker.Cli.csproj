@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Task 4.4: non-web console app that runs in a Linux container.
+       Reuses the unchanged GradeTracker.Core library from Task 1. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GradeTracker.Cli</RootNamespace>
+    <AssemblyName>GradeTracker.Cli</AssemblyName>
+    <Version>1.0.0</Version>
+    <!-- The container starts the app with "dotnet GradeTracker.Cli.dll", so no native launcher is needed. -->
+    <UseAppHost>false</UseAppHost>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- GradeTracker.Core targets net8.0; a net8.0 library runs unchanged on .NET 10. -->
+    <ProjectReference Include="..\..\src\GradeTracker.Core\GradeTracker.Core.csproj" />
+  </ItemGroup>
+
+</Project>

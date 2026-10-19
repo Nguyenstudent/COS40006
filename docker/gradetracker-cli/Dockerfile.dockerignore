@@ -1,0 +1,9 @@
+# Used only by docker/gradetracker-cli/Dockerfile. The build context is the repository
+# root, so send only the two projects the build needs and leave everything else out.
+*
+!src/GradeTracker.Core/
+!docker/gradetracker-cli/
+**/bin/
+**/obj/
+**/publish/
+**/.vs/

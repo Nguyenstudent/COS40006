@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study Log</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, "Segoe UI", Arial, sans-serif; background: #f4f6fb; color: #1f2937; margin: 0; }
+  main { max-width: 820px; margin: 32px auto; padding: 0 16px; }
+  h1 { color: #1d63ed; margin-bottom: 4px; }
+  .sub { color: #6b7280; margin-top: 0; }
+  section { background: #fff; border-radius: 12px; padding: 20px 24px; margin: 16px 0; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  form { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 10px; align-items: end; }
+  label { font-size: 13px; font-weight: 600; display: block; }
+  input { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; margin-top: 4px; }
+  button { padding: 9px 18px; background: #1d63ed; color: #fff; border: 0; border-radius: 6px; font-size: 15px; cursor: pointer; }
+  .errors { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
+  .errors li { margin: 2px 0; }
+  .bar-row { display: grid; grid-template-columns: 100px 1fr 110px; gap: 10px; align-items: center; margin: 6px 0; }
+  .bar { background: #e5e7eb; border-radius: 4px; height: 18px; }
+  .bar span { display: block; height: 100%; background: #1d63ed; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid #e5e7eb; }
+  .muted { color: #6b7280; }
+  footer { font-size: 12px; color: #6b7280; text-align: center; margin: 20px 0; }
+  @media (max-width: 640px) { form { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Study Log</h1>
+  <p class="sub">Record how long you study each unit.</p>
+
+  <section>
+    <h2>Add a study session</h2>
+    {% if errors %}
+      <ul class="errors">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+    <form method="post" action="/">
+      <div><label for="unit">Unit code</label>
+        <input id="unit" name="unit" placeholder="SWE40006" value="{{ form.get('unit', '') }}" required></div>
+      <div><label for="minutes">Minutes</label>
+        <input id="minutes" name="minutes" type="number" min="1" max="600" value="{{ form.get('minutes', '') }}" required></div>
+      <div><label for="note">Note (optional)</label>
+        <input id="note" name="note" maxlength="100" value="{{ form.get('note', '') }}"></div>
+      <button type="submit">Add</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Total per unit</h2>
+    <p class="muted">Total {{ grand_total }}, {{ count }} session{{ '' if count == 1 else 's' }}</p>
+    {% for t in totals %}
+      <div class="bar-row">
+        <strong>{{ t.unit }}</strong>
+        <div class="bar"><span style="width: {{ t.pct }}%"></span></div>
+        <span>{{ t.label }}</span>
+      </div>
+    {% else %}
+      <p class="muted">No sessions yet.</p>
+    {% endfor %}
+  </section>
+
+  <section>
+    <h2>Recent sessions</h2>
+    {% if recent %}
+    <table>
+      <tr><th>When</th><th>Unit</th><th>Minutes</th><th>Note</th></tr>
+      {% for s in recent %}
+      <tr><td>{{ s.time }}</td><td>{{ s.unit }}</td><td>{{ s.minutes }}</td><td>{{ s.note }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}
+      <p class="muted">No sessions yet.</p>
+    {% endif %}
+  </section>
+
+  <footer>Container {{ container_id }} &middot; Redis {{ redis_version }} &middot; SWE40006 Task 4.3 &ndash; Nguyen Tuan Kiet (105004515)</footer>
+</main>
+</body>
+</html>
