@@ -1,0 +1,6 @@
+# LF line endings in every checkout (Windows included), so "npm run format:check" gives the
+# same result on laptops as on the Linux Jenkins server, and shell scripts run on the servers.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

@@ -1,0 +1,1267 @@
+diff --git a/.dockerignore b/.dockerignore
+new file mode 100644
+index 0000000..a167fd5
+--- /dev/null
++++ b/.dockerignore
+@@ -0,0 +1,16 @@
++# Keep the build context small and free of secrets.
++.git
++node_modules
++.next
++coverage
++*.tsbuildinfo
++.env*
++!.env.example
++deploy
++monitoring
++infra
++Jenkinsfile
++Dockerfile
++.dockerignore
++.vscode
++docs
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 0000000..b37e89b
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,6 @@
++# LF line endings in every checkout (Windows included), so "npm run format:check" gives the
++# same result on laptops as on the Linux Jenkins server, and shell scripts run on the servers.
++* text=auto eol=lf
++*.png binary
++*.jpg binary
++*.ico binary
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..7203a31
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,41 @@
++# syntax=docker/dockerfile:1
++# Frog Management – production image built by the Jenkins pipeline.
++#   docker build --build-arg GIT_SHA=$(git rev-parse --short=7 HEAD) -t <dockerhub-user>/frog-app:<sha> .
++
++# 1. Dependencies (cached until package.json / package-lock.json change)
++FROM node:24-slim AS deps
++WORKDIR /app
++COPY package.json package-lock.json ./
++RUN npm ci --no-audit --no-fund
++
++# 2. Build. NEXT_PUBLIC_* values are compiled into the bundle, so they are build arguments.
++#    Leave them empty to get the app's "workspace is getting ready" setup screen.
++FROM node:24-slim AS build
++WORKDIR /app
++ARG NEXT_PUBLIC_SUPABASE_URL=
++ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
++ARG NEXT_PUBLIC_SITE_URL=
++ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
++    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY \
++    NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
++    NEXT_TELEMETRY_DISABLED=1
++COPY --from=deps /app/node_modules ./node_modules
++COPY . .
++RUN npm run build
++
++# 3. Runtime: only the standalone server, static files and public assets
++FROM node:24-slim AS runtime
++WORKDIR /app
++ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1
++COPY --from=build --chown=node:node /app/public ./public
++COPY --from=build --chown=node:node /app/.next/standalone ./
++COPY --from=build --chown=node:node /app/.next/static ./.next/static
++# The commit is set last so the layers above stay cached between builds.
++ARG GIT_SHA=dev
++ENV APP_COMMIT=$GIT_SHA
++LABEL org.opencontainers.image.revision=$GIT_SHA
++USER node
++EXPOSE 3000
++HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
++  CMD ["node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
++CMD ["node", "server.js"]
+diff --git a/Jenkinsfile b/Jenkinsfile
+new file mode 100644
+index 0000000..0f4f1b3
+--- /dev/null
++++ b/Jenkinsfile
+@@ -0,0 +1,170 @@
++// Frog Management – CI/CD pipeline (SWE40006 project, Level 4).
++// Job type: Pipeline, "Pipeline script from SCM", branch main, trigger "GitHub hook trigger for GITScm polling".
++// Needs on the Jenkins server: Docker, Node.js 24, git; plugins: Pipeline, Git, GitHub, SSH Agent,
++// Credentials Binding, JUnit, Timestamper.
++// Global environment variables (Manage Jenkins > System > Global properties):
++//   DOCKERHUB_REPO   e.g. ourteam/frog-app
++//   TEST_HOST        test server address (Elastic IP or private IP)
++//   PROD_HOST        production server address
++//   NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY   optional, browser-safe values
++// Credentials: "dockerhub" (username + access token), "app-servers-ssh" (SSH key for ec2-user).
++
++pipeline {
++  agent any
++
++  options {
++    timestamps()
++    disableConcurrentBuilds()
++    buildDiscarder(logRotator(numToKeepStr: '30'))
++    timeout(time: 3, unit: 'HOURS')   // includes the time waiting for approval
++  }
++
++  triggers {
++    githubPush()
++  }
++
++  parameters {
++    booleanParam(name: 'AUTO_PROMOTE', defaultValue: false,
++      description: 'Deploy to production without waiting for approval (automatic instead of deferred deployment)')
++  }
++
++  environment {
++    IMAGE = "${env.DOCKERHUB_REPO}"
++  }
++
++  stages {
++    stage('Checkout') {
++      steps {
++        checkout scm
++        script {
++          env.TAG = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
++          currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.TAG}"
++        }
++        sh 'node --version && npm --version && docker --version'
++      }
++    }
++
++    stage('Install') {
++      steps {
++        sh 'npm ci --no-audit --no-fund'
++      }
++    }
++
++    stage('Static checks') {
++      steps {
++        sh 'npm run typecheck'
++        sh 'npm run format:check'
++      }
++    }
++
++    stage('Unit tests') {
++      steps {
++        // Same files as "npm test", plus a JUnit report for Jenkins.
++        sh '''
++          node --test \
++            --test-reporter=spec --test-reporter-destination=stdout \
++            --test-reporter=junit --test-reporter-destination=unit-tests.xml \
++            tests/domain/*.test.ts tests/prototype/*.test.mjs
++        '''
++      }
++      post {
++        always {
++          junit allowEmptyResults: true, testResults: 'unit-tests.xml'
++        }
++      }
++    }
++
++    stage('Database tests') {
++      steps {
++        // test-database.mjs runs postgres:17 with --pull=never, so make sure the image is present.
++        sh 'docker image inspect postgres:17 > /dev/null 2>&1 || docker pull postgres:17'
++        sh 'npm run test:db'
++      }
++    }
++
++    stage('Build image') {
++      steps {
++        sh '''
++          docker build \
++            --build-arg GIT_SHA="$TAG" \
++            --build-arg NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-}" \
++            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}" \
++            -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
++        '''
++      }
++    }
++
++    stage('Push image') {
++      steps {
++        withCredentials([usernamePassword(credentialsId: 'dockerhub',
++            usernameVariable: 'DH_USER', passwordVariable: 'DH_TOKEN')]) {
++          sh '''
++            echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
++            docker push "$IMAGE:$TAG"
++            docker push "$IMAGE:latest"
++          '''
++        }
++      }
++    }
++
++    stage('Deploy to test') {
++      steps {
++        sshagent(credentials: ['app-servers-ssh']) {
++          sh 'bash deploy/remote-deploy.sh "$TEST_HOST" "$IMAGE" "$TAG"'
++        }
++      }
++    }
++
++    stage('Smoke test: test server') {
++      steps {
++        sh 'bash deploy/smoke-test.sh "http://$TEST_HOST"'
++      }
++    }
++
++    stage('Approve production') {
++      when {
++        expression { !params.AUTO_PROMOTE }
++      }
++      steps {
++        // Deferred deployment: the build waits here until a team member clicks Deploy.
++        timeout(time: 2, unit: 'HOURS') {
++          input message: "Deploy ${env.TAG} to production?", ok: 'Deploy'
++        }
++      }
++    }
++
++    stage('Deploy to production') {
++      steps {
++        sshagent(credentials: ['app-servers-ssh']) {
++          // deploy.sh on the server rolls back by itself if the new container never becomes healthy.
++          sh 'bash deploy/remote-deploy.sh "$PROD_HOST" "$IMAGE" "$TAG"'
++        }
++      }
++    }
++
++    stage('Verify production') {
++      steps {
++        script {
++          try {
++            sh 'bash deploy/smoke-test.sh "http://$PROD_HOST"'
++          } catch (err) {
++            echo "Production smoke test failed - rolling back to the previous release"
++            sshagent(credentials: ['app-servers-ssh']) {
++              sh 'ssh -o StrictHostKeyChecking=accept-new ec2-user@"$PROD_HOST" "cd ~/frog && ./deploy.sh --rollback"'
++            }
++            throw err
++          }
++        }
++      }
++    }
++  }
++
++  post {
++    always {
++      sh 'docker logout || true'
++    }
++    success {
++      echo "Release ${env.TAG} is live on http://${env.PROD_HOST}"
++    }
++  }
++}
+diff --git a/deploy/compose.yaml b/deploy/compose.yaml
+new file mode 100644
+index 0000000..242b59d
+--- /dev/null
++++ b/deploy/compose.yaml
+@@ -0,0 +1,15 @@
++# Frog Management on the test and production servers (copied to ~/frog by remote-deploy.sh).
++# IMAGE and TAG come from current.env, written by deploy.sh.
++name: frog
++
++services:
++  app:
++    image: ${IMAGE:?IMAGE is not set}:${TAG:?TAG is not set}
++    ports:
++      - "80:3000"
++    restart: unless-stopped
++    logging:
++      driver: json-file
++      options:
++        max-size: "10m"
++        max-file: "3"
+diff --git a/deploy/deploy.sh b/deploy/deploy.sh
+new file mode 100644
+index 0000000..7c610eb
+--- /dev/null
++++ b/deploy/deploy.sh
+@@ -0,0 +1,57 @@
++#!/usr/bin/env bash
++# Runs ON the test/production server (in ~/frog). Called by Jenkins through remote-deploy.sh.
++#   ./deploy.sh <image> <tag>    deploy a release; if it cannot be pulled, started or never becomes
++#                                healthy, the previous release is restored automatically
++#   ./deploy.sh --rollback       go back to the previous release
++# current.env holds the running release, previous.env the one before it.
++set -euo pipefail
++cd "$(dirname "$0")"
++
++up() {
++  docker compose --env-file current.env pull --quiet &&
++    docker compose --env-file current.env up -d --remove-orphans
++}
++
++healthy() {
++  for _ in $(seq 1 45); do
++    if curl -fsS --max-time 3 http://localhost/api/health > /dev/null; then return 0; fi
++    sleep 2
++  done
++  return 1
++}
++
++release() { tr '\n' ' ' < current.env; }
++
++if [ "${1:-}" = "--rollback" ]; then
++  [ -f previous.env ] || { echo "No previous release to roll back to."; exit 1; }
++  cp previous.env current.env
++  echo "Rolling back to $(release)"
++  if up && healthy; then echo "Rollback healthy."; exit 0; fi
++  echo "Rollback did not become healthy - check: docker compose --env-file current.env logs app"
++  exit 1
++fi
++
++[ $# -eq 2 ] || { echo "usage: $0 <image> <tag> | --rollback"; exit 2; }
++[ -f previous.env ] && cp previous.env previous.env.bak   # restored if this deployment fails
++[ -f current.env ] && cp current.env previous.env
++printf 'IMAGE=%s\nTAG=%s\n' "$1" "$2" > current.env
++echo "Deploying $1:$2"
++
++if up && healthy; then
++  echo "Release $2 is healthy."
++  rm -f previous.env.bak
++  docker image prune -f > /dev/null   # keep the disk from filling up with old releases
++  exit 0
++fi
++
++echo "Release $2 could not be pulled, started or made healthy:"
++docker compose --env-file current.env logs --tail 30 app || true
++if [ -f previous.env ]; then
++  cp previous.env current.env
++  [ -f previous.env.bak ] && mv previous.env.bak previous.env   # keep the older release as the rollback target
++  echo "Automatic rollback to $(release)"
++  up && healthy && echo "Previous release is serving again." || echo "Rollback also failed - investigate now."
++else
++  echo "No previous release to restore (first deployment)."
++fi
++exit 1
+diff --git a/deploy/remote-deploy.sh b/deploy/remote-deploy.sh
+new file mode 100644
+index 0000000..1c42091
+--- /dev/null
++++ b/deploy/remote-deploy.sh
+@@ -0,0 +1,12 @@
++#!/usr/bin/env bash
++# Runs on the Jenkins server: copies the deployment files to a target server and runs deploy.sh there.
++#   bash deploy/remote-deploy.sh <host> <image> <tag>
++# Needs an SSH key for ec2-user on the target (Jenkins provides it through the sshagent step).
++set -euo pipefail
++host="$1"; image="$2"; tag="$3"
++here="$(cd "$(dirname "$0")" && pwd)"
++ssh_opts=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
++
++ssh "${ssh_opts[@]}" "ec2-user@$host" "mkdir -p ~/frog"
++scp "${ssh_opts[@]}" "$here/compose.yaml" "$here/deploy.sh" "ec2-user@$host:~/frog/"
++ssh "${ssh_opts[@]}" "ec2-user@$host" "chmod +x ~/frog/deploy.sh && ~/frog/deploy.sh '$image' '$tag'"
+diff --git a/deploy/smoke-test.sh b/deploy/smoke-test.sh
+new file mode 100644
+index 0000000..09dc254
+--- /dev/null
++++ b/deploy/smoke-test.sh
+@@ -0,0 +1,28 @@
++#!/usr/bin/env bash
++# Smoke test a deployed environment from outside the server.
++#   bash deploy/smoke-test.sh http://<host>     (exit code 0 = all checks passed)
++set -uo pipefail
++base="${1%/}"
++fail=0
++
++check() {   # check <path> <expected text>
++  local path="$1" expect="$2" body code
++  for _ in 1 2 3 4 5; do
++    body="$(curl -sSL --max-time 10 -w '\n%{http_code}' "$base$path" 2>&1)"
++    code="${body##*$'\n'}"
++    [ "$code" = "200" ] && break
++    sleep 3
++  done
++  if [ "$code" = "200" ] && grep -qi -- "$expect" <<< "$body"; then
++    echo "PASS  $path  (HTTP $code)"
++  else
++    echo "FAIL  $path  (HTTP $code, expected 200 containing '$expect')"
++    fail=1
++  fi
++}
++
++check /api/health '"status":"ok"'
++check /vi "<html"   # -L: with Supabase configured this follows the redirect to the login page
++check /en '<html'
++curl -sS --max-time 10 "$base/api/health" && echo
++exit $fail
+diff --git a/infra/user-data-app-server.sh b/infra/user-data-app-server.sh
+new file mode 100644
+index 0000000..d88a44c
+--- /dev/null
++++ b/infra/user-data-app-server.sh
+@@ -0,0 +1,28 @@
++#!/bin/bash
++# EC2 user data for the TEST and PRODUCTION servers (Amazon Linux 2023, x86_64, t3.small, 16 GiB).
++# Paste into EC2 > Launch instance > Advanced details > User data. Runs once as root at first boot.
++# Log: /var/log/cloud-init-output.log   Finished when it prints "APP SERVER SETUP DONE".
++set -euxo pipefail
++
++dnf update -y
++dnf install -y docker git
++
++# 1 GiB swap as a safety margin on the 2 GiB t3.small (app + monitoring stack on production)
++if [ ! -f /swapfile ]; then
++  dd if=/dev/zero of=/swapfile bs=1M count=1024
++  chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
++  echo '/swapfile none swap defaults 0 0' >> /etc/fstab
++fi
++
++systemctl enable --now docker
++usermod -aG docker ec2-user   # Jenkins deploys as ec2-user over SSH
++
++# Docker Compose v2 plugin (not packaged for Amazon Linux 2023)
++mkdir -p /usr/local/lib/docker/cli-plugins
++curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
++  -o /usr/local/lib/docker/cli-plugins/docker-compose
++chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
++
++sudo -u ec2-user mkdir -p /home/ec2-user/frog /home/ec2-user/monitoring
++docker version; docker compose version
++echo "APP SERVER SETUP DONE"
+diff --git a/infra/user-data-jenkins.sh b/infra/user-data-jenkins.sh
+new file mode 100644
+index 0000000..60692c3
+--- /dev/null
++++ b/infra/user-data-jenkins.sh
+@@ -0,0 +1,40 @@
++#!/bin/bash
++# EC2 user data for the Jenkins CI/build server (Amazon Linux 2023, x86_64, t3.medium, 20 GiB).
++# Paste into EC2 > Launch instance > Advanced details > User data. Runs once as root at first boot.
++# Log: /var/log/cloud-init-output.log   Finished when it prints "JENKINS SETUP DONE".
++set -euxo pipefail
++
++dnf update -y
++dnf install -y git docker fontconfig java-21-amazon-corretto-headless tar xz
++
++# 2 GiB swap: the Next.js build plus Jenkins can briefly exceed 4 GiB of RAM.
++if [ ! -f /swapfile ]; then
++  dd if=/dev/zero of=/swapfile bs=1M count=2048
++  chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
++  echo '/swapfile none swap defaults 0 0' >> /etc/fstab
++fi
++
++# Docker (image builds, postgres:17 for the database tests)
++systemctl enable --now docker
++
++# Node.js 24 (the app requires >= 24): latest 24.x from nodejs.org into /opt, linked into /usr/local/bin
++NODE_DIST=https://nodejs.org/dist/latest-v24.x
++NODE_FILE=$(curl -fsSL "$NODE_DIST/SHASUMS256.txt" | awk '/linux-x64.tar.xz$/ {print $2}')
++curl -fsSL "$NODE_DIST/$NODE_FILE" | tar -xJ -C /opt
++ln -sf "/opt/${NODE_FILE%.tar.xz}/bin/node" /usr/local/bin/node
++ln -sf "/opt/${NODE_FILE%.tar.xz}/bin/npm" /usr/local/bin/npm
++ln -sf "/opt/${NODE_FILE%.tar.xz}/bin/npx" /usr/local/bin/npx
++
++# Jenkins LTS from the official repository
++curl -fsSL -o /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
++rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
++dnf install -y jenkins
++usermod -aG docker jenkins          # let pipeline steps run docker without sudo
++systemctl enable --now jenkins
++
++# Pre-pull the database test image (the test runner uses --pull=never)
++docker pull postgres:17
++
++node --version; java -version; docker --version
++echo "Initial admin password: $(cat /var/lib/jenkins/secrets/initialAdminPassword 2>/dev/null || echo 'not ready yet')"
++echo "JENKINS SETUP DONE"
+diff --git a/monitoring/.env.example b/monitoring/.env.example
+new file mode 100644
+index 0000000..2c758fd
+--- /dev/null
++++ b/monitoring/.env.example
+@@ -0,0 +1,2 @@
++# Copy to .env on the production server and change the password. .env is ignored by Git.
++GRAFANA_ADMIN_PASSWORD=change-me
+diff --git a/monitoring/alert-rules.yml b/monitoring/alert-rules.yml
+new file mode 100644
+index 0000000..999474b
+--- /dev/null
++++ b/monitoring/alert-rules.yml
+@@ -0,0 +1,44 @@
++# Alert rules evaluated by Prometheus (see http://localhost:9090/alerts through an SSH tunnel).
++# The thresholds match the success metrics in the project brief.
++groups:
++  - name: frog-production
++    rules:
++      - alert: AppDown
++        expr: probe_success{job="app-health"} == 0
++        for: 1m
++        labels:
++          severity: critical
++        annotations:
++          summary: "Frog Management health check failing for 1 minute"
++
++      - alert: AppSlow
++        expr: probe_duration_seconds{job="app-health"} > 0.5
++        for: 5m
++        labels:
++          severity: warning
++        annotations:
++          summary: "Health check slower than 500 ms for 5 minutes"
++
++      - alert: HighCpu
++        expr: 100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 80
++        for: 5m
++        labels:
++          severity: warning
++        annotations:
++          summary: "Production CPU above 80% for 5 minutes"
++
++      - alert: HighMemory
++        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 80
++        for: 5m
++        labels:
++          severity: warning
++        annotations:
++          summary: "Production memory use above 80% for 5 minutes"
++
++      - alert: DiskAlmostFull
++        expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) > 85
++        for: 10m
++        labels:
++          severity: warning
++        annotations:
++          summary: "Root disk more than 85% full"
+diff --git a/monitoring/blackbox.yml b/monitoring/blackbox.yml
+new file mode 100644
+index 0000000..62412df
+--- /dev/null
++++ b/monitoring/blackbox.yml
+@@ -0,0 +1,9 @@
++modules:
++  http_2xx:
++    prober: http
++    timeout: 5s
++    http:
++      valid_status_codes: [200]
++      method: GET
++      fail_if_body_not_matches_regexp:
++        - '"status":"ok"'
+diff --git a/monitoring/compose.yaml b/monitoring/compose.yaml
+new file mode 100644
+index 0000000..77f02d2
+--- /dev/null
++++ b/monitoring/compose.yaml
+@@ -0,0 +1,74 @@
++# Production instrumentation (Level 2). Run on the production server from ~/monitoring:
++#   cp .env.example .env   (set a Grafana password)   then   docker compose up -d
++# Public: Grafana :3000 (restrict to the team in the security group). Prometheus stays on 127.0.0.1.
++name: monitoring
++
++services:
++  prometheus:
++    image: prom/prometheus:v3.5.0
++    command:
++      - --config.file=/etc/prometheus/prometheus.yml
++      - --storage.tsdb.retention.time=15d
++    volumes:
++      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
++      - ./alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
++      - prometheus-data:/prometheus
++    ports:
++      - "127.0.0.1:9090:9090"
++    extra_hosts:
++      - "host.docker.internal:host-gateway"
++    restart: unless-stopped
++
++  # Host metrics: CPU, memory, disk, network. Host network so it sees the real interfaces.
++  node-exporter:
++    image: prom/node-exporter:v1.9.1
++    command:
++      - --path.rootfs=/host
++    network_mode: host
++    pid: host
++    volumes:
++      - /:/host:ro,rslave
++    restart: unless-stopped
++
++  # Per-container CPU and memory (the app container and the monitoring containers).
++  cadvisor:
++    image: gcr.io/cadvisor/cadvisor:v0.49.1
++    privileged: true
++    devices:
++      - /dev/kmsg
++    volumes:
++      - /:/rootfs:ro
++      - /var/run:/var/run:ro
++      - /sys:/sys:ro
++      - /var/lib/docker/:/var/lib/docker:ro
++      - /dev/disk/:/dev/disk:ro
++    restart: unless-stopped
++
++  # Availability and response time of the app, probed every 15 s.
++  blackbox:
++    image: prom/blackbox-exporter:v0.27.0
++    command:
++      - --config.file=/etc/blackbox/blackbox.yml
++    volumes:
++      - ./blackbox.yml:/etc/blackbox/blackbox.yml:ro
++    extra_hosts:
++      - "host.docker.internal:host-gateway"
++    restart: unless-stopped
++
++  grafana:
++    image: grafana/grafana:12.1.0
++    environment:
++      GF_SECURITY_ADMIN_USER: admin
++      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
++      GF_USERS_ALLOW_SIGN_UP: "false"
++    volumes:
++      - ./grafana/provisioning:/etc/grafana/provisioning:ro
++      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
++      - grafana-data:/var/lib/grafana
++    ports:
++      - "3000:3000"
++    restart: unless-stopped
++
++volumes:
++  prometheus-data:
++  grafana-data:
+diff --git a/monitoring/grafana/dashboards/frog-overview.json b/monitoring/grafana/dashboards/frog-overview.json
+new file mode 100644
+index 0000000..39b4365
+--- /dev/null
++++ b/monitoring/grafana/dashboards/frog-overview.json
+@@ -0,0 +1,515 @@
++{
++  "uid": "frog-overview",
++  "title": "Frog Management – Production overview",
++  "schemaVersion": 39,
++  "version": 1,
++  "editable": true,
++  "refresh": "15s",
++  "time": {
++    "from": "now-6h",
++    "to": "now"
++  },
++  "timezone": "browser",
++  "tags": ["frog", "production"],
++  "panels": [
++    {
++      "id": 1,
++      "type": "stat",
++      "title": "App up (health probe)",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 0,
++        "y": 0,
++        "w": 6,
++        "h": 4
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "none",
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "red",
++                "value": null
++              },
++              {
++                "color": "green",
++                "value": 1
++              }
++            ]
++          },
++          "color": {
++            "mode": "thresholds"
++          }
++        },
++        "overrides": []
++      },
++      "options": {
++        "reduceOptions": {
++          "calcs": ["lastNotNull"]
++        },
++        "colorMode": "background"
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "probe_success{job=\"app-health\"}",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 2,
++      "type": "stat",
++      "title": "Availability (last 24 h)",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 6,
++        "y": 0,
++        "w": 6,
++        "h": 4
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "percent",
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "red",
++                "value": null
++              },
++              {
++                "color": "orange",
++                "value": 95
++              },
++              {
++                "color": "green",
++                "value": 99
++              }
++            ]
++          },
++          "color": {
++            "mode": "thresholds"
++          },
++          "decimals": 2
++        },
++        "overrides": []
++      },
++      "options": {
++        "reduceOptions": {
++          "calcs": ["lastNotNull"]
++        },
++        "colorMode": "background"
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "avg_over_time(probe_success{job=\"app-health\"}[24h]) * 100",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 3,
++      "type": "stat",
++      "title": "Health check response",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 12,
++        "y": 0,
++        "w": 6,
++        "h": 4
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "s",
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "green",
++                "value": null
++              },
++              {
++                "color": "orange",
++                "value": 0.3
++              },
++              {
++                "color": "red",
++                "value": 0.5
++              }
++            ]
++          },
++          "color": {
++            "mode": "thresholds"
++          },
++          "decimals": 3
++        },
++        "overrides": []
++      },
++      "options": {
++        "reduceOptions": {
++          "calcs": ["lastNotNull"]
++        },
++        "colorMode": "background"
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "probe_duration_seconds{job=\"app-health\"}",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 4,
++      "type": "stat",
++      "title": "Server uptime",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 18,
++        "y": 0,
++        "w": 6,
++        "h": 4
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "s",
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "blue",
++                "value": null
++              }
++            ]
++          },
++          "color": {
++            "mode": "thresholds"
++          }
++        },
++        "overrides": []
++      },
++      "options": {
++        "reduceOptions": {
++          "calcs": ["lastNotNull"]
++        },
++        "colorMode": "background"
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "time() - node_boot_time_seconds",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 5,
++      "type": "timeseries",
++      "title": "CPU usage",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 0,
++        "y": 4,
++        "w": 12,
++        "h": 8
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "percent",
++          "min": 0,
++          "max": 100
++        },
++        "overrides": []
++      },
++      "options": {
++        "legend": {
++          "displayMode": "list",
++          "placement": "bottom"
++        }
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1m])))",
++          "legendFormat": "CPU %",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 6,
++      "type": "timeseries",
++      "title": "Memory usage",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 12,
++        "y": 4,
++        "w": 12,
++        "h": 8
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "percent",
++          "min": 0,
++          "max": 100
++        },
++        "overrides": []
++      },
++      "options": {
++        "legend": {
++          "displayMode": "list",
++          "placement": "bottom"
++        }
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
++          "legendFormat": "Memory %",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 7,
++      "type": "timeseries",
++      "title": "Disk usage (/)",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 0,
++        "y": 12,
++        "w": 12,
++        "h": 8
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "percent",
++          "min": 0,
++          "max": 100
++        },
++        "overrides": []
++      },
++      "options": {
++        "legend": {
++          "displayMode": "list",
++          "placement": "bottom"
++        }
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})",
++          "legendFormat": "Disk %",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 8,
++      "type": "timeseries",
++      "title": "Network traffic",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 12,
++        "y": 12,
++        "w": 12,
++        "h": 8
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "Bps"
++        },
++        "overrides": []
++      },
++      "options": {
++        "legend": {
++          "displayMode": "list",
++          "placement": "bottom"
++        }
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[1m])",
++          "legendFormat": "in {{device}}",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        },
++        {
++          "refId": "B",
++          "expr": "rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[1m])",
++          "legendFormat": "out {{device}}",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 9,
++      "type": "timeseries",
++      "title": "Container memory",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 0,
++        "y": 20,
++        "w": 12,
++        "h": 8
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "bytes"
++        },
++        "overrides": []
++      },
++      "options": {
++        "legend": {
++          "displayMode": "list",
++          "placement": "bottom"
++        }
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "container_memory_working_set_bytes{name!=\"\"}",
++          "legendFormat": "{{name}}",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 10,
++      "type": "timeseries",
++      "title": "Container CPU",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 12,
++        "y": 20,
++        "w": 12,
++        "h": 8
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "percent"
++        },
++        "overrides": []
++      },
++      "options": {
++        "legend": {
++          "displayMode": "list",
++          "placement": "bottom"
++        }
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "rate(container_cpu_usage_seconds_total{name!=\"\"}[1m]) * 100",
++          "legendFormat": "{{name}}",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    },
++    {
++      "id": 11,
++      "type": "timeseries",
++      "title": "Health check response time",
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "gridPos": {
++        "x": 0,
++        "y": 28,
++        "w": 24,
++        "h": 8
++      },
++      "fieldConfig": {
++        "defaults": {
++          "unit": "s"
++        },
++        "overrides": []
++      },
++      "options": {
++        "legend": {
++          "displayMode": "list",
++          "placement": "bottom"
++        }
++      },
++      "targets": [
++        {
++          "refId": "A",
++          "expr": "probe_duration_seconds{job=\"app-health\"}",
++          "legendFormat": "response time",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        }
++      ]
++    }
++  ]
++}
+diff --git a/monitoring/grafana/provisioning/dashboards/dashboards.yml b/monitoring/grafana/provisioning/dashboards/dashboards.yml
+new file mode 100644
+index 0000000..8aadb7c
+--- /dev/null
++++ b/monitoring/grafana/provisioning/dashboards/dashboards.yml
+@@ -0,0 +1,7 @@
++apiVersion: 1
++providers:
++  - name: frog
++    folder: Frog Management
++    type: file
++    options:
++      path: /var/lib/grafana/dashboards
+diff --git a/monitoring/grafana/provisioning/datasources/prometheus.yml b/monitoring/grafana/provisioning/datasources/prometheus.yml
+new file mode 100644
+index 0000000..2387b2f
+--- /dev/null
++++ b/monitoring/grafana/provisioning/datasources/prometheus.yml
+@@ -0,0 +1,8 @@
++apiVersion: 1
++datasources:
++  - name: Prometheus
++    uid: prometheus
++    type: prometheus
++    access: proxy
++    url: http://prometheus:9090
++    isDefault: true
+diff --git a/monitoring/prometheus.yml b/monitoring/prometheus.yml
+new file mode 100644
+index 0000000..d6cdf31
+--- /dev/null
++++ b/monitoring/prometheus.yml
+@@ -0,0 +1,36 @@
++global:
++  scrape_interval: 15s
++  evaluation_interval: 15s
++
++rule_files:
++  - /etc/prometheus/alert-rules.yml
++
++scrape_configs:
++  - job_name: prometheus
++    static_configs:
++      - targets: ["localhost:9090"]
++
++  - job_name: node
++    static_configs:
++      - targets: ["host.docker.internal:9100"]
++        labels:
++          server: production
++
++  - job_name: cadvisor
++    static_configs:
++      - targets: ["cadvisor:8080"]
++
++  # The blackbox exporter fetches the app's health endpoint through the host's port 80.
++  - job_name: app-health
++    metrics_path: /probe
++    params:
++      module: [http_2xx]
++    static_configs:
++      - targets: ["http://host.docker.internal/api/health"]
++    relabel_configs:
++      - source_labels: [__address__]
++        target_label: __param_target
++      - source_labels: [__param_target]
++        target_label: instance
++      - target_label: __address__
++        replacement: blackbox:9115
+diff --git a/next.config.ts b/next.config.ts
+index dab646e..7602954 100644
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
+ import createNextIntlPlugin from "next-intl/plugin";
+ 
+ const config: NextConfig = {
++  // Self-contained server in .next/standalone, used by the Docker image.
++  output: "standalone",
+   poweredByHeader: false,
+   agentRules: false,
+   experimental: { agentFeedback: false },
+diff --git a/src/app/api/health/route.ts b/src/app/api/health/route.ts
+new file mode 100644
+index 0000000..490ed3b
+--- /dev/null
++++ b/src/app/api/health/route.ts
+@@ -0,0 +1,21 @@
++// Health check for the DevOps pipeline: smoke tests, the Docker HEALTHCHECK and the
++// Prometheus blackbox probe all call GET /api/health. It never touches the database,
++// so it reports whether the web server itself is up.
++export const dynamic = "force-dynamic";
++
++// Bump this (and push) to see a new release flow through the pipeline.
++const RELEASE = "1.0.0";
++const startedAt = new Date().toISOString();
++
++export function GET() {
++  return Response.json(
++    {
++      status: "ok",
++      release: RELEASE,
++      commit: process.env.APP_COMMIT ?? "dev",
++      startedAt,
++      uptimeSeconds: Math.round(process.uptime()),
++    },
++    { headers: { "Cache-Control": "no-store" } },
++  );
++}
+diff --git a/src/proxy.ts b/src/proxy.ts
+index acda061..31c370a 100644
+--- a/src/proxy.ts
++++ b/src/proxy.ts
+@@ -28,4 +28,5 @@ export async function proxy(request: NextRequest) {
+   response.headers.set("Cache-Control", "private, no-store");
+   return response;
+ }
+-export const config = { matcher: ["/((?!_next|.*\\..*).*)"] };
++// /api/* (the health check) is excluded so next-intl does not redirect it to /vi/api/*.
++export const config = { matcher: ["/((?!api|_next|.*\\..*).*)"] };

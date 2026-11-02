@@ -1,0 +1,170 @@
+// Frog Management – CI/CD pipeline (SWE40006 project, Level 4).
+// Job type: Pipeline, "Pipeline script from SCM", branch main, trigger "GitHub hook trigger for GITScm polling".
+// Needs on the Jenkins server: Docker, Node.js 24, git; plugins: Pipeline, Git, GitHub, SSH Agent,
+// Credentials Binding, JUnit, Timestamper.
+// Global environment variables (Manage Jenkins > System > Global properties):
+//   DOCKERHUB_REPO   e.g. ourteam/frog-app
+//   TEST_HOST        test server address (Elastic IP or private IP)
+//   PROD_HOST        production server address
+//   NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY   optional, browser-safe values
+// Credentials: "dockerhub" (username + access token), "app-servers-ssh" (SSH key for ec2-user).
+
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+    timeout(time: 3, unit: 'HOURS')   // includes the time waiting for approval
+  }
+
+  triggers {
+    githubPush()
+  }
+
+  parameters {
+    booleanParam(name: 'AUTO_PROMOTE', defaultValue: false,
+      description: 'Deploy to production without waiting for approval (automatic instead of deferred deployment)')
+  }
+
+  environment {
+    IMAGE = "${env.DOCKERHUB_REPO}"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        script {
+          env.TAG = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+          currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.TAG}"
+        }
+        sh 'node --version && npm --version && docker --version'
+      }
+    }
+
+    stage('Install') {
+      steps {
+        sh 'npm ci --no-audit --no-fund'
+      }
+    }
+
+    stage('Static checks') {
+      steps {
+        sh 'npm run typecheck'
+        sh 'npm run format:check'
+      }
+    }
+
+    stage('Unit tests') {
+      steps {
+        // Same files as "npm test", plus a JUnit report for Jenkins.
+        sh '''
+          node --test \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=junit --test-reporter-destination=unit-tests.xml \
+            tests/domain/*.test.ts tests/prototype/*.test.mjs
+        '''
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'unit-tests.xml'
+        }
+      }
+    }
+
+    stage('Database tests') {
+      steps {
+        // test-database.mjs runs postgres:17 with --pull=never, so make sure the image is present.
+        sh 'docker image inspect postgres:17 > /dev/null 2>&1 || docker pull postgres:17'
+        sh 'npm run test:db'
+      }
+    }
+
+    stage('Build image') {
+      steps {
+        sh '''
+          docker build \
+            --build-arg GIT_SHA="$TAG" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-}" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}" \
+            -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
+        '''
+      }
+    }
+
+    stage('Push image') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub',
+            usernameVariable: 'DH_USER', passwordVariable: 'DH_TOKEN')]) {
+          sh '''
+            echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
+            docker push "$IMAGE:$TAG"
+            docker push "$IMAGE:latest"
+          '''
+        }
+      }
+    }
+
+    stage('Deploy to test') {
+      steps {
+        sshagent(credentials: ['app-servers-ssh']) {
+          sh 'bash deploy/remote-deploy.sh "$TEST_HOST" "$IMAGE" "$TAG"'
+        }
+      }
+    }
+
+    stage('Smoke test: test server') {
+      steps {
+        sh 'bash deploy/smoke-test.sh "http://$TEST_HOST"'
+      }
+    }
+
+    stage('Approve production') {
+      when {
+        expression { !params.AUTO_PROMOTE }
+      }
+      steps {
+        // Deferred deployment: the build waits here until a team member clicks Deploy.
+        timeout(time: 2, unit: 'HOURS') {
+          input message: "Deploy ${env.TAG} to production?", ok: 'Deploy'
+        }
+      }
+    }
+
+    stage('Deploy to production') {
+      steps {
+        sshagent(credentials: ['app-servers-ssh']) {
+          // deploy.sh on the server rolls back by itself if the new container never becomes healthy.
+          sh 'bash deploy/remote-deploy.sh "$PROD_HOST" "$IMAGE" "$TAG"'
+        }
+      }
+    }
+
+    stage('Verify production') {
+      steps {
+        script {
+          try {
+            sh 'bash deploy/smoke-test.sh "http://$PROD_HOST"'
+          } catch (err) {
+            echo "Production smoke test failed - rolling back to the previous release"
+            sshagent(credentials: ['app-servers-ssh']) {
+              sh 'ssh -o StrictHostKeyChecking=accept-new ec2-user@"$PROD_HOST" "cd ~/frog && ./deploy.sh --rollback"'
+            }
+            throw err
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker logout || true'
+    }
+    success {
+      echo "Release ${env.TAG} is live on http://${env.PROD_HOST}"
+    }
+  }
+}

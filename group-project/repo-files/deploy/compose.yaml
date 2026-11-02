@@ -1,0 +1,15 @@
+# Frog Management on the test and production servers (copied to ~/frog by remote-deploy.sh).
+# IMAGE and TAG come from current.env, written by deploy.sh.
+name: frog
+
+services:
+  app:
+    image: ${IMAGE:?IMAGE is not set}:${TAG:?TAG is not set}
+    ports:
+      - "80:3000"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

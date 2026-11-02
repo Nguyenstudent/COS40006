@@ -1,0 +1,44 @@
+# Alert rules evaluated by Prometheus (see http://localhost:9090/alerts through an SSH tunnel).
+# The thresholds match the success metrics in the project brief.
+groups:
+  - name: frog-production
+    rules:
+      - alert: AppDown
+        expr: probe_success{job="app-health"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Frog Management health check failing for 1 minute"
+
+      - alert: AppSlow
+        expr: probe_duration_seconds{job="app-health"} > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Health check slower than 500 ms for 5 minutes"
+
+      - alert: HighCpu
+        expr: 100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Production CPU above 80% for 5 minutes"
+
+      - alert: HighMemory
+        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Production memory use above 80% for 5 minutes"
+
+      - alert: DiskAlmostFull
+        expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Root disk more than 85% full"
