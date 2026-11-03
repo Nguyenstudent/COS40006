@@ -4,7 +4,7 @@ This folder turns the project brief into work. Each role has its own step-by-ste
 
 | Role (brief Table 10) | Guide | Owns | Levels |
 |---|---|---|---|
-| **1. Infrastructure** | [role-1-infrastructure.md](role-1-infrastructure.md) | AWS Learner Lab account, 3 EC2 servers, security groups, Elastic IPs, SSH access | 1 |
+| **1. Infrastructure** | [role-1-infrastructure.md](role-1-infrastructure.md) | Team AWS account (MFA, IAM logins, budgets), 3 EC2 servers, security groups, Elastic IPs, SSH access, cost control | 1 |
 | **2. CI/CD pipeline** | [role-2-cicd-pipeline.md](role-2-cicd-pipeline.md) | Jenkins set-up, plugins, credentials, Docker Hub, the pipeline job, GitHub webhook, approvals | 1, 3, 4 |
 | **3. Application and testing** | [role-3-application-testing.md](role-3-application-testing.md) | Repository changes (Dockerfile, health endpoint…), test stages, smoke tests, Level 4 demo | 1, 3, 4 |
 | **4. Monitoring and documentation** | [role-4-monitoring-documentation.md](role-4-monitoring-documentation.md) | Prometheus/Grafana on production, success-metric evidence, report and slides | 2 + all |
@@ -46,8 +46,8 @@ Role 3 commits them there (step 3 of their guide). It implements the pipeline de
 
 | Hand-off | From → to | What |
 |---|---|---|
-| H1 | Role 1 → everyone | Elastic IPs and **private** IPs of the 3 servers, security group names, the date/time the lab will be running |
-| H2 | Role 1 → Role 2 | SSH key that can log in to the test/production servers as `ec2-user` (for the `app-servers-ssh` credential) |
+| H1 | Role 1 → everyone | Console sign-in URL + each member's IAM login; Elastic IPs and **private** IPs of the 3 servers |
+| H2 | Role 1 → Role 2 | `frog-key.pem`, which logs in to the test/production servers as `ec2-user` (for the `app-servers-ssh` credential) |
 | H3 | Role 1 → Role 4 | Production server Elastic IP; SSH access |
 | H4 | Role 3 → Role 2 | Repository changes merged into `main` (Jenkinsfile, Dockerfile, deploy scripts) |
 | H5 | Role 2 → everyone | Jenkins URL and a personal Jenkins login for each member |
@@ -57,7 +57,9 @@ Role 3 commits them there (step 3 of their guide). It implements the pipeline de
 
 | Name | Value |
 |---|---|
-| Learner Lab owner (whose AWS account hosts everything) | |
+| AWS account owner (holds root + billing) | |
+| Console sign-in URL `https://<account-id>.signin.aws.amazon.com/console` | |
+| Region | ap-southeast-1 (Singapore) |
 | Jenkins Elastic IP → Jenkins URL `http://<ip>:8080/` | |
 | Test server Elastic IP / private IP | / |
 | Production server Elastic IP / private IP | / |
@@ -67,11 +69,11 @@ Role 3 commits them there (step 3 of their guide). It implements the pipeline de
 
 ## Ground rules
 
-- **One AWS account.** Every Learner Lab is a separate AWS account, so all three servers live in the **Infrastructure lead's** lab. Nobody else can see them in the console; they use SSH, the Jenkins page and Grafana. The servers only run while that person's lab session is started – agree on work times.
+- **One team AWS account** (changed from the Learner Lab in the brief – note this in the report). The Infrastructure lead creates it; every member signs in with their **own IAM user** (never root) and MFA, in region **ap-southeast-1**.
 - **Secrets never go in Git**: Docker Hub token, SSH keys, Grafana password and any Supabase values live in Jenkins credentials or in `.env` files on the servers.
 - **`main` = production.** Work on a branch, open a pull request, merge to `main`; every merge runs the full pipeline.
 - **Screenshot as you go.** Every guide ends with an evidence list; Role 4 collects them for the report.
-- **Stop instances you are not using** (Role 1) – credits are limited.
+- **It costs real money once the credits are gone.** The three servers cost about US$0.12/hour when running. Stop them at the end of each work session (anyone can, with their IAM login) and react to budget emails – see Role 1 step 10.
 
 ## Glossary of names used in all guides
 

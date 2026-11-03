@@ -98,12 +98,12 @@ level was met against the metrics, lessons learned). Suggested structure:
 4. Level 3 – application deployment to test and production, smoke tests, `/api/health`
 5. Level 4 – webhook-triggered build, deferred approval, AUTO_PROMOTE run, blocked failing build, rollback
 6. Success metrics – table of target vs achieved (section 5 above)
-7. Problems and resolutions – e.g. the format-check baseline, the `/api/health` locale redirect, Learner Lab IP changes
+7. Problems and resolutions – e.g. the format-check baseline, the `/api/health` locale redirect, and the change from the Learner Lab (brief) to a team AWS account – why, and the cost controls used
 8. Lessons learned and future work (Terraform/Ansible, HTTPS, Kubernetes, notifications)
 
 **Presentation** (Week 11, 4–8 slides, 15 min + Q&A): ① problem & goal ② pipeline diagram ③ tools and why
 ④ live demo: push → Jenkins → test → approve → production (Role 3's demo A) ⑤ Grafana during load ⑥ blocked
-build (demo B) ⑦ metrics achieved ⑧ problems & lessons. Have screenshots ready in case the lab is down.
+build (demo B) ⑦ metrics achieved ⑧ problems & lessons. Have screenshots ready in case a server is down, and start the instances well before the session.
 
 ## Troubleshooting
 

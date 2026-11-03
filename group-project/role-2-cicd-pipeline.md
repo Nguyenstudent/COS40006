@@ -3,7 +3,7 @@
 **You own:** the Jenkins server's configuration, plugins, users and credentials, the Docker Hub repository,
 the `frog-pipeline` job, the GitHub webhook, and the approval step.
 **Levels:** 1 (CI/build server + test stages), 3 (deployment), 4 (automatic trigger + deferred deployment).
-**You need from others:** Jenkins URL and initial admin password (Role 1), the deploy SSH key `labsuser.pem`
+**You need from others:** Jenkins URL and initial admin password (Role 1), the deploy SSH key `frog-key.pem`
 (Role 1), the repository changes merged to `main` (Role 3), admin rights on the GitHub repo for the webhook
 (repo owner).
 **You hand over:** H5 (Jenkins logins), H6 (build history).
@@ -49,7 +49,7 @@ Manage Jenkins → **Credentials → System → Global credentials → Add Crede
 | ID | Kind | Values |
 |---|---|---|
 | `dockerhub` | Username with password | Username = Docker ID, Password = the access token |
-| `app-servers-ssh` | SSH Username with private key | Username `ec2-user`; Private Key → Enter directly → paste all of `labsuser.pem` |
+| `app-servers-ssh` | SSH Username with private key | Username `ec2-user`; Private Key → Enter directly → paste all of `frog-key.pem` |
 
 📷 the credentials list (values are hidden – safe to screenshot).
 
@@ -86,7 +86,7 @@ Build Now → Console Output must show Node 24, Docker, and both server hostname
 |---|---|
 | `permission denied ... docker.sock` | `sudo usermod -aG docker jenkins && sudo systemctl restart jenkins` on frog-jenkins |
 | `node: not found` | the user data did not finish – ask Role 1; `ls -l /usr/local/bin/node` |
-| `Permission denied (publickey)` | `app-servers-ssh` must be user `ec2-user` with the whole `labsuser.pem` including the BEGIN/END lines |
+| `Permission denied (publickey)` | `app-servers-ssh` must be user `ec2-user` with the whole `frog-key.pem` including the BEGIN/END lines |
 | `No such DSL method 'sshagent'` | SSH Agent plugin missing or Jenkins not restarted |
 
 ## 7. Create the pipeline job
