@@ -147,6 +147,30 @@ Save console output as text as well as screenshots, and log every error in the s
 - [ ] `/api/health` JSON in the browser · local image *(healthy)* · smoke test PASS output
 - [ ] Level 4 A before/after · Level 4 B red build + Test Result page · revert to green
 
+## Your report section
+
+**You write:** section 4, *Level 1/3 – application, quality gates and deployment*, and section 6, *Level 4*, together with
+Role 2 (all sections: section 7 of the [plan](testing-and-report-plan.md)). For each step: what you did, **why** (the
+reason for each choice is the analysis), and the evidence (`Console n:` for pasted terminal text, `Figure n:` for a
+captioned screenshot). Refer to your issues by E-number.
+
+Cover:
+- the local baseline as Consoles: Node version, `npm ci`, typecheck, the test summary, the build. The guide says
+  55 tests, but upstream `main` has changed since 2 Nov, so record the number you actually get;
+- the formatting baseline: the failing `format:check` output (an issue in itself), the owner's approval, the commit;
+- each repository change and the reason for it, in your own words (the table in step 3), especially the
+  `src/proxy.ts` fix for the `/api/health` redirect;
+- the test stages and what each one proves, with the Jenkins *Test Result* page and the `test:db` output;
+- the smoke-test output against the test and production servers;
+- for Level 4 (with Role 2): demo A before/after (page and `/api/health`), demo B red build and revert, demo C if done.
+
+**Role 4 will run on your part:** acceptance tests A1–A4, plus C2 (demo B) and S1 (no secrets in Git) (plan section 4).
+**Log these if you met them** (exact message, what you checked, fix, re-check): `format:check` failures, including
+CRLF line endings on Windows; errors from a Node older than 24; `/api/health` returning 404 or redirecting; the
+translation-parity test failing after the demo edit; the `npm ci` install-script warnings (a warning counts – say
+why it is harmless); and anything you could not run locally (for example, no Docker Desktop for step 5) and how it
+was tested instead.
+
 ## Done when
 
 - [ ] `npm run format:check` passes on `main` and the devops files are merged

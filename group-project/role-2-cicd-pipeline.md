@@ -163,6 +163,32 @@ Save console output as text as well as screenshots, and log every error in the s
 - [ ] Docker Hub repo showing tags = commit hashes · webhook Recent Deliveries 200
 - [ ] A build "Started by GitHub push" · an AUTO_PROMOTE run · a red build that stopped before deployment
 
+## Your report section
+
+**You write:** section 3, *Level 1 – CI/CD*, and section 6, *Level 4*, together with Role 3 (all sections: section 7
+of the [plan](testing-and-report-plan.md)). For each step: what you did, **why** (the reason for each choice is the
+analysis), and the evidence (`Console n:` for pasted text such as Console Output, `Figure n:` for a captioned
+screenshot). Refer to your issues by E-number.
+
+Cover:
+- Jenkins set-up: plugins (why SSH Agent is added), one user per member and the authorization setting, 2 executors
+  and why (the approval wait holds one);
+- Docker Hub: the repository and why it is public, the token (Read & Write) instead of a password;
+- credentials and global variables: why secrets live in Jenkins (masked in logs) and why the hosts are private IPs;
+- the `toolcheck` job output as a Console (Node 24, Docker, both server hostnames);
+- the `frog-pipeline` job: configuration, every stage and what it does, the first green run with stage durations;
+- the webhook: Recent Deliveries 200, a build "Started by GitHub push" (and the Poll SCM fallback if you needed it);
+- deferred vs automatic deployment (approval step, `AUTO_PROMOTE`) and the rollback behaviour;
+- for Level 4 (with Role 3): demo A (push → test → approve → production), demo B (red build, production unchanged).
+
+**Give Role 4 the Jenkins figures** for the success metrics (hand-off H6). For every build on `main`: build number,
+commit, start and end time, result, who approved it, and the stage durations.
+**Role 4 will run on your part:** acceptance tests C1–C5 (plan section 4).
+**Log these if you met them** (exact message, what you checked, fix, re-check): `permission denied ... docker.sock`,
+`node: not found`, `Permission denied (publickey)`, `No such DSL method 'sshagent'`, any stage failure from the
+troubleshooting table above (format check, `postgres:17`, container name in use, out of memory, push `denied`,
+`Host key verification failed`, smoke test HTTP 000), and webhook deliveries that failed.
+
 ## Done when
 
 - [ ] A push to `main` starts the pipeline automatically, deploys to test, waits for approval and deploys to production

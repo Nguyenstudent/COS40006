@@ -209,6 +209,32 @@ Save console output as text as well as screenshots, and log every error in the s
 - [ ] Security groups with rules · 3 instances Running with types visible · Elastic IPs associated
 - [ ] cloud-init "DONE" lines · `docker version` on each server · Jenkins unlock page · reproducibility timings
 
+## Your report section
+
+**You write:** section 2, *Level 1 – infrastructure* (the full list of sections is in section 7 of the
+[plan](testing-and-report-plan.md)). Your build is finished, so write it now while you still remember the details.
+For each step: what you did, **why** (the reason for each choice is the analysis), and the evidence
+(`Console n:` for pasted terminal text, `Figure n:` for a captioned screenshot). Refer to your issues by E-number.
+
+Cover:
+- the switch from the brief's Learner Lab to a team account: why, which plan (Free or Paid) and why;
+- security: root MFA, the two IAM groups and why `frog-team` gets less than `frog-admins`, MFA for every member;
+- cost: the budgets, the cost table, the stop-when-idle routine, and the real spend so far (Billing → Bills);
+- region and key pair, and how the key is kept out of Git;
+- the security groups: each open port and the reason, and what is deliberately closed (9090, 9100, 9115 → SSH tunnels);
+  if SSH 22 is open to Anywhere, explain the trade-off (key-only login, home IPs change);
+- the instances: types and disk sizes and why (and any Free-plan substitution such as `c7i-flex.large`), the user-data
+  scripts, the cloud-init `DONE` lines as a Console;
+- Elastic IPs vs private IPs, and why Jenkins uses the private ones;
+- the reproducibility test: target < 30 min vs your measured time.
+
+**Role 4 will run on your part:** acceptance tests I1–I5 (plan section 4).
+**Log these if you met them** (exact message, what you checked, fix, re-check): account pending verification,
+`VcpuLimitExceeded`, an instance type refused on the Free plan, `UNPROTECTED PRIVATE KEY FILE`,
+`Permission denied (publickey)`, `docker: permission denied` before re-login, user data that did not finish, the
+Jenkins GPG key error. If you did not save an error's exact text, say so in the issues log. Do not rewrite it from
+memory; reproduce it only if that is safe (for example, the key-file permissions).
+
 ## Done when
 
 - [ ] Every member can sign in to the console with their own IAM user (MFA on)
