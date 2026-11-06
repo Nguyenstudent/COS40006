@@ -138,7 +138,10 @@ serving again. Or demonstrate `./deploy.sh --rollback` on production.
 | `/api/health` returns 404 or redirects | `src/proxy.ts` change missing (matcher must start with `(?!api|_next`) |
 | Translation-parity test fails after the demo edit | you changed a key or edited only one language file |
 
-## Evidence checklist (for Role 4)
+## Evidence checklist (for your report section)
+
+Save console output as text as well as screenshots, and log every error in the shared issues log when it happens
+([testing-and-report-plan.md](testing-and-report-plan.md)). Role 4 runs the acceptance tests on your part afterwards.
 
 - [ ] Local test run (55 pass) · formatting commit · the devops pull request and its diff
 - [ ] `/api/health` JSON in the browser · local image *(healthy)* · smoke test PASS output

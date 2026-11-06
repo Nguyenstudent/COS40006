@@ -7,3 +7,10 @@ modules:
       method: GET
       fail_if_body_not_matches_regexp:
         - '"status":"ok"'
+
+  # The start page (/vi) for the brief's response-time metric. No body check: the HTML changes with every release.
+  http_page:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET

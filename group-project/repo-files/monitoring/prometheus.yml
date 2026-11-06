@@ -34,3 +34,18 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: blackbox:9115
+
+  # The start page, for the brief's "95% of start-page requests in < 500 ms" metric.
+  - job_name: app-page
+    metrics_path: /probe
+    params:
+      module: [http_page]
+    static_configs:
+      - targets: ["http://host.docker.internal/vi"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

@@ -153,7 +153,10 @@ job: Triggers → **Poll SCM** `H/2 * * * *` (checks every 2 minutes).
 | Deploy – `docker: permission denied` on the server | ec2-user not in the docker group yet → Role 1 reboots the server once |
 | Smoke test – FAIL `/api/health` HTTP 000 | app container not up: on the server `cd ~/frog && docker compose --env-file current.env logs app` |
 
-## Evidence checklist (for Role 4)
+## Evidence checklist (for your report section)
+
+Save console output as text as well as screenshots, and log every error in the shared issues log when it happens
+([testing-and-report-plan.md](testing-and-report-plan.md)). Role 4 runs the acceptance tests on your part afterwards.
 
 - [ ] Plugins and credentials pages · global environment variables (blur the IPs if you like)
 - [ ] `frog-pipeline` configuration (SCM + trigger) · first green run stage view · approval prompt

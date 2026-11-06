@@ -479,32 +479,113 @@ index 0000000..2c758fd
 @@ -0,0 +1,2 @@
 +# Copy to .env on the production server and change the password. .env is ignored by Git.
 +GRAFANA_ADMIN_PASSWORD=change-me
+diff --git a/monitoring/alert-rules.test.yml b/monitoring/alert-rules.test.yml
+new file mode 100644
+index 0000000..a0f9033
+--- /dev/null
++++ b/monitoring/alert-rules.test.yml
+@@ -0,0 +1,66 @@
++# Unit tests for alert-rules.yml: they check how long each alert takes to fire. Run from ~/monitoring:
++#   docker run --rm -v "$PWD":/m -w /m --entrypoint promtool prom/prometheus:v3.5.0 test rules alert-rules.test.yml
++# Every test simulates 15 s scrapes, the same interval prometheus.yml uses.
++rule_files:
++  - alert-rules.yml
++evaluation_interval: 15s
++
++tests:
++  # The app stops at 1m (first failed probe). Pending at once, firing once "for: 1m" has passed.
++  - name: AppDown fires 1 minute after the first failed probe
++    interval: 15s
++    input_series:
++      - series: 'probe_success{job="app-health", instance="http://host.docker.internal/api/health"}'
++        values: "1x3 0x12"
++    alert_rule_test:
++      - eval_time: 1m45s
++        alertname: AppDown
++        exp_alerts: []
++      - eval_time: 2m15s
++        alertname: AppDown
++        exp_alerts:
++          - exp_labels:
++              severity: critical
++              job: app-health
++              instance: http://host.docker.internal/api/health
++            exp_annotations:
++              summary: "Frog Management probe failing for 1 minute"
++
++  # node-exporter stops at 1m. Without TargetDown nothing would alert: the host metrics simply vanish.
++  - name: TargetDown fires 2 minutes after a scrape starts failing
++    interval: 15s
++    input_series:
++      - series: 'up{job="node", instance="host.docker.internal:9100"}'
++        values: "1x3 0x12"
++    alert_rule_test:
++      - eval_time: 2m45s
++        alertname: TargetDown
++        exp_alerts: []
++      - eval_time: 3m15s
++        alertname: TargetDown
++        exp_alerts:
++          - exp_labels:
++              severity: warning
++              job: node
++              instance: host.docker.internal:9100
++            exp_annotations:
++              summary: "Prometheus cannot scrape a target for 2 minutes"
++
++  # The CPU is fully busy from 10m (the idle counter stops growing). The 5-minute rate needs about 4 minutes
++  # to climb past 80%, then "for: 5m" adds 5 more, so the alert fires about 9 minutes in, not 5.
++  - name: HighCpu fires about 9 minutes after the CPU becomes fully busy
++    interval: 15s
++    input_series:
++      - series: 'node_cpu_seconds_total{cpu="0", mode="idle"}'
++        values: "0+15x40 600x60"
++    alert_rule_test:
++      - eval_time: 18m
++        alertname: HighCpu
++        exp_alerts: []
++      - eval_time: 19m30s
++        alertname: HighCpu
++        exp_alerts:
++          - exp_labels:
++              severity: warning
++            exp_annotations:
++              summary: "Production CPU above 80% for 5 minutes"
 diff --git a/monitoring/alert-rules.yml b/monitoring/alert-rules.yml
 new file mode 100644
-index 0000000..999474b
+index 0000000..714f439
 --- /dev/null
 +++ b/monitoring/alert-rules.yml
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,53 @@
 +# Alert rules evaluated by Prometheus (see http://localhost:9090/alerts through an SSH tunnel).
 +# The thresholds match the success metrics in the project brief.
 +groups:
 +  - name: frog-production
 +    rules:
 +      - alert: AppDown
-+        expr: probe_success{job="app-health"} == 0
++        expr: probe_success{job=~"app-health|app-page"} == 0
 +        for: 1m
 +        labels:
 +          severity: critical
 +        annotations:
-+          summary: "Frog Management health check failing for 1 minute"
++          summary: "Frog Management probe failing for 1 minute"
 +
 +      - alert: AppSlow
-+        expr: probe_duration_seconds{job="app-health"} > 0.5
++        expr: probe_duration_seconds{job=~"app-health|app-page"} > 0.5
 +        for: 5m
 +        labels:
 +          severity: warning
 +        annotations:
-+          summary: "Health check slower than 500 ms for 5 minutes"
++          summary: "Frog Management probe slower than 500 ms for 5 minutes"
++
++      # If an exporter stops, its metrics vanish and the alerts above can never fire, so watch the scrapes too.
++      - alert: TargetDown
++        expr: up == 0
++        for: 2m
++        labels:
++          severity: warning
++        annotations:
++          summary: "Prometheus cannot scrape a target for 2 minutes"
 +
 +      - alert: HighCpu
 +        expr: 100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 80
@@ -531,10 +612,10 @@ index 0000000..999474b
 +          summary: "Root disk more than 85% full"
 diff --git a/monitoring/blackbox.yml b/monitoring/blackbox.yml
 new file mode 100644
-index 0000000..62412df
+index 0000000..431c031
 --- /dev/null
 +++ b/monitoring/blackbox.yml
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,16 @@
 +modules:
 +  http_2xx:
 +    prober: http
@@ -544,6 +625,13 @@ index 0000000..62412df
 +      method: GET
 +      fail_if_body_not_matches_regexp:
 +        - '"status":"ok"'
++
++  # The start page (/vi) for the brief's response-time metric. No body check: the HTML changes with every release.
++  http_page:
++    prober: http
++    timeout: 5s
++    http:
++      method: GET
 diff --git a/monitoring/compose.yaml b/monitoring/compose.yaml
 new file mode 100644
 index 0000000..77f02d2
@@ -626,10 +714,10 @@ index 0000000..77f02d2
 +  grafana-data:
 diff --git a/monitoring/grafana/dashboards/frog-overview.json b/monitoring/grafana/dashboards/frog-overview.json
 new file mode 100644
-index 0000000..39b4365
+index 0000000..8708053
 --- /dev/null
 +++ b/monitoring/grafana/dashboards/frog-overview.json
-@@ -0,0 +1,515 @@
+@@ -0,0 +1,524 @@
 +{
 +  "uid": "frog-overview",
 +  "title": "Frog Management – Production overview",
@@ -1108,7 +1196,7 @@ index 0000000..39b4365
 +    {
 +      "id": 11,
 +      "type": "timeseries",
-+      "title": "Health check response time",
++      "title": "Response time (health check and start page)",
 +      "datasource": {
 +        "type": "prometheus",
 +        "uid": "prometheus"
@@ -1135,7 +1223,16 @@ index 0000000..39b4365
 +        {
 +          "refId": "A",
 +          "expr": "probe_duration_seconds{job=\"app-health\"}",
-+          "legendFormat": "response time",
++          "legendFormat": "/api/health",
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          }
++        },
++        {
++          "refId": "B",
++          "expr": "probe_duration_seconds{job=\"app-page\"}",
++          "legendFormat": "/vi (start page)",
 +          "datasource": {
 +            "type": "prometheus",
 +            "uid": "prometheus"
@@ -1174,10 +1271,10 @@ index 0000000..2387b2f
 +    isDefault: true
 diff --git a/monitoring/prometheus.yml b/monitoring/prometheus.yml
 new file mode 100644
-index 0000000..d6cdf31
+index 0000000..55caf13
 --- /dev/null
 +++ b/monitoring/prometheus.yml
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,51 @@
 +global:
 +  scrape_interval: 15s
 +  evaluation_interval: 15s
@@ -1207,6 +1304,21 @@ index 0000000..d6cdf31
 +      module: [http_2xx]
 +    static_configs:
 +      - targets: ["http://host.docker.internal/api/health"]
++    relabel_configs:
++      - source_labels: [__address__]
++        target_label: __param_target
++      - source_labels: [__param_target]
++        target_label: instance
++      - target_label: __address__
++        replacement: blackbox:9115
++
++  # The start page, for the brief's "95% of start-page requests in < 500 ms" metric.
++  - job_name: app-page
++    metrics_path: /probe
++    params:
++      module: [http_page]
++    static_configs:
++      - targets: ["http://host.docker.internal/vi"]
 +    relabel_configs:
 +      - source_labels: [__address__]
 +        target_label: __param_target

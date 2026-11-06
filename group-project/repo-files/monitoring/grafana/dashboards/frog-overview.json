@@ -476,7 +476,7 @@
     {
       "id": 11,
       "type": "timeseries",
-      "title": "Health check response time",
+      "title": "Response time (health check and start page)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -503,7 +503,16 @@
         {
           "refId": "A",
           "expr": "probe_duration_seconds{job=\"app-health\"}",
-          "legendFormat": "response time",
+          "legendFormat": "/api/health",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "probe_duration_seconds{job=\"app-page\"}",
+          "legendFormat": "/vi (start page)",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"

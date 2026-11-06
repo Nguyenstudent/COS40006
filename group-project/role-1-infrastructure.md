@@ -200,7 +200,10 @@ the account (account menu → Account → Close account).
 | User data did nothing | it only runs at **first** boot; check `/var/log/cloud-init-output.log`, or run the script by hand: copy it with scp, then `sudo bash user-data-app-server.sh` |
 | `dnf install jenkins` GPG/key error | Jenkins rotated its signing key: open https://pkg.jenkins.io/redhat-stable/ and use the key named there in the `rpm --import` line, then `sudo dnf install -y jenkins` |
 
-## Evidence checklist (for Role 4)
+## Evidence checklist (for your report section)
+
+Save console output as text as well as screenshots, and log every error in the shared issues log when it happens
+([testing-and-report-plan.md](testing-and-report-plan.md)). Role 4 runs the acceptance tests on your part afterwards.
 
 - [ ] Root MFA · budgets · IAM users and groups · region and key pair
 - [ ] Security groups with rules · 3 instances Running with types visible · Elastic IPs associated

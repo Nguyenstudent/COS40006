@@ -4,20 +4,29 @@ groups:
   - name: frog-production
     rules:
       - alert: AppDown
-        expr: probe_success{job="app-health"} == 0
+        expr: probe_success{job=~"app-health|app-page"} == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Frog Management health check failing for 1 minute"
+          summary: "Frog Management probe failing for 1 minute"
 
       - alert: AppSlow
-        expr: probe_duration_seconds{job="app-health"} > 0.5
+        expr: probe_duration_seconds{job=~"app-health|app-page"} > 0.5
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Health check slower than 500 ms for 5 minutes"
+          summary: "Frog Management probe slower than 500 ms for 5 minutes"
+
+      # If an exporter stops, its metrics vanish and the alerts above can never fire, so watch the scrapes too.
+      - alert: TargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus cannot scrape a target for 2 minutes"
 
       - alert: HighCpu
         expr: 100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 80

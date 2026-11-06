@@ -1,0 +1,66 @@
+# Unit tests for alert-rules.yml: they check how long each alert takes to fire. Run from ~/monitoring:
+#   docker run --rm -v "$PWD":/m -w /m --entrypoint promtool prom/prometheus:v3.5.0 test rules alert-rules.test.yml
+# Every test simulates 15 s scrapes, the same interval prometheus.yml uses.
+rule_files:
+  - alert-rules.yml
+evaluation_interval: 15s
+
+tests:
+  # The app stops at 1m (first failed probe). Pending at once, firing once "for: 1m" has passed.
+  - name: AppDown fires 1 minute after the first failed probe
+    interval: 15s
+    input_series:
+      - series: 'probe_success{job="app-health", instance="http://host.docker.internal/api/health"}'
+        values: "1x3 0x12"
+    alert_rule_test:
+      - eval_time: 1m45s
+        alertname: AppDown
+        exp_alerts: []
+      - eval_time: 2m15s
+        alertname: AppDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: app-health
+              instance: http://host.docker.internal/api/health
+            exp_annotations:
+              summary: "Frog Management probe failing for 1 minute"
+
+  # node-exporter stops at 1m. Without TargetDown nothing would alert: the host metrics simply vanish.
+  - name: TargetDown fires 2 minutes after a scrape starts failing
+    interval: 15s
+    input_series:
+      - series: 'up{job="node", instance="host.docker.internal:9100"}'
+        values: "1x3 0x12"
+    alert_rule_test:
+      - eval_time: 2m45s
+        alertname: TargetDown
+        exp_alerts: []
+      - eval_time: 3m15s
+        alertname: TargetDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: host.docker.internal:9100
+            exp_annotations:
+              summary: "Prometheus cannot scrape a target for 2 minutes"
+
+  # The CPU is fully busy from 10m (the idle counter stops growing). The 5-minute rate needs about 4 minutes
+  # to climb past 80%, then "for: 5m" adds 5 more, so the alert fires about 9 minutes in, not 5.
+  - name: HighCpu fires about 9 minutes after the CPU becomes fully busy
+    interval: 15s
+    input_series:
+      - series: 'node_cpu_seconds_total{cpu="0", mode="idle"}'
+        values: "0+15x40 600x60"
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: HighCpu
+        exp_alerts: []
+      - eval_time: 19m30s
+        alertname: HighCpu
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Production CPU above 80% for 5 minutes"
