@@ -69,7 +69,7 @@ the report section for the part they built; Role 4 tests every part and writes u
 | Test server Elastic IP / private IP | / |
 | Production server Elastic IP / private IP | / |
 | Docker Hub repository (e.g. `ourteam/frog-app`) | |
-| GitHub repository | https://github.com/NhatNguyen2407/frog-management |
+| GitHub repository | https://github.com/NhatNguyen2407/frog-management-swe40006 |
 | Grafana URL `http://<prod-ip>:3000/` | |
 
 ## Ground rules
