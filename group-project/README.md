@@ -12,8 +12,8 @@ This folder turns the project brief into work. Each role has its own step-by-ste
 **Application repository:** the private coursework copy [frog-management-swe40006](https://github.com/NhatNguyen2407/frog-management-swe40006) (ask its owner, Minh Nhat,
 for access). Role 3 committed the pipeline files there on 14 Nov – see [role-3-progress.md](role-3-progress.md).
 `repo-files/` is the kit's reference copy of those files (same paths), and `devops-pipeline.patch` the same change
-against the upstream frog-management repository. `monitoring/` is added to the coursework repository by Role 4's
-[pull request #1](https://github.com/NhatNguyen2407/frog-management-swe40006/pull/1); `infra/` is still only in this kit.
+against the upstream frog-management repository. `monitoring/` was added to the coursework repository by Role 4's
+[pull request #1](https://github.com/NhatNguyen2407/frog-management-swe40006/pull/1) (merged 22 Nov); `infra/` is still only in this kit.
 
 **Testing, issues and the report:** [testing-and-report-plan.md](testing-and-report-plan.md) – who records what, the
 shared issues log, the acceptance and fault tests, and which member writes which report section. Every member writes
