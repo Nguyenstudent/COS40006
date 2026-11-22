@@ -4,8 +4,9 @@
 the `frog-pipeline` job, the GitHub webhook, and the approval step.
 **Levels:** 1 (CI/build server + test stages), 3 (deployment), 4 (automatic trigger + deferred deployment).
 **You need from others:** Jenkins URL and initial admin password (Role 1), the deploy SSH key `frog-key.pem`
-(Role 1), the repository changes merged to `main` (Role 3), admin rights on the GitHub repo for the webhook
-(repo owner).
+(Role 1), the repository changes merged to `main` (Role 3), and from the owner of the private repository
+frog-management-swe40006 (Minh Nhat): read access for you, a read-only access token for Jenkins (step 4) and the
+webhook (step 8 – only an admin can add it).
 **You hand over:** H5 (Jenkins logins), H6 (build history).
 
 The pipeline itself is already written: `Jenkinsfile` in the repo (see `repo-files/Jenkinsfile`). Your job is to
@@ -50,6 +51,13 @@ Manage Jenkins → **Credentials → System → Global credentials → Add Crede
 |---|---|---|
 | `dockerhub` | Username with password | Username = Docker ID, Password = the access token |
 | `app-servers-ssh` | SSH Username with private key | Username `ec2-user`; Private Key → Enter directly → paste all of `frog-key.pem` |
+| `github-frog` | Username with password | Username = the repo owner's GitHub username, Password = the access token below |
+
+The application repository is **private**, so Jenkins needs a token to clone it. A collaborator cannot create a
+fine-grained token for someone else's repository, so the **repo owner** creates it: GitHub → Settings → Developer
+settings → **Fine-grained tokens** → Generate → Repository access *Only select repositories* →
+`frog-management-swe40006` → Permissions → **Contents: Read-only** → expiry after the marking date → Generate, and
+sends it to you privately.
 
 📷 the credentials list (values are hidden – safe to screenshot).
 
@@ -94,11 +102,10 @@ Build Now → Console Output must show Node 24, Docker, and both server hostname
 (After Role 3 has merged the repository changes – H4.)
 
 New Item → name **`frog-pipeline`** → **Pipeline** → OK:
-- **General → GitHub project**: `https://github.com/NhatNguyen2407/frog-management/`
+- **General → GitHub project**: `https://github.com/NhatNguyen2407/frog-management-swe40006/`
 - **Triggers**: tick **GitHub hook trigger for GITScm polling**
 - **Pipeline → Definition**: *Pipeline script from SCM* · SCM **Git** · Repository URL
-  `https://github.com/NhatNguyen2407/frog-management.git` · Branch `*/main` · Script Path `Jenkinsfile`
-  (public repo → no credentials; if it becomes private, add a GitHub personal access token as a credential here)
+  `https://github.com/NhatNguyen2407/frog-management-swe40006.git` · Credentials **`github-frog`** · Branch `*/main` · Script Path `Jenkinsfile`
 - Save → **Build Now** (the first run also registers the `AUTO_PROMOTE` parameter).
 
 The first build takes 5–10 minutes (npm and Docker caches are empty). Watch **Console Output** or the
@@ -110,7 +117,7 @@ Check from your laptop: `http://<prod-elastic-ip>/vi` and `http://<prod-elastic-
 
 ## 8. GitHub webhook (automatic trigger, Level 4)
 
-Needs admin on the repository – the repo owner does this, or adds you as an admin collaborator.
+Needs admin on the repository: the owner (Minh Nhat) adds it, or makes you an admin collaborator.
 
 GitHub repo → **Settings → Webhooks → Add webhook**:
 - Payload URL: `http://<jenkins-elastic-ip>:8080/github-webhook/` (**trailing slash required**)
@@ -144,6 +151,7 @@ job: Triggers → **Poll SCM** `H/2 * * * *` (checks every 2 minutes).
 
 | Stage fails | Likely cause → fix |
 |---|---|
+| Checkout – `Authentication failed` / `Repository not found` | the repository is private: credential `github-frog` missing in the job, token expired, or token without *Contents: Read-only* |
 | Static checks – `format:check` | the 21 unformatted upstream files → Role 3's formatting commit (their step 2) |
 | Database tests – `Unable to find image 'postgres:17'` | `docker pull postgres:17` on frog-jenkins (the stage also pulls it) |
 | Database tests – container name in use | a previous run was killed: `docker rm -f frog-operations-phase1-tests` |

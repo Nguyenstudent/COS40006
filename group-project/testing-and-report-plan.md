@@ -76,7 +76,7 @@ Record each as: ID, date, command, output (text), pass/fail. A failure becomes a
 | C3 | CI/CD | Deferred deployment waits | A normal build | pauses at *Approve production* until someone approves |
 | C4 | CI/CD | Image tag = commit | Docker Hub tags vs `git log --oneline -1` | same short hash |
 | C5 | CI/CD | Secrets are masked | Search the Jenkins console log for the Docker Hub token and the key | only `****` |
-| A1 | App | Smoke tests on both servers | `deploy/smoke-test.sh http://<test-eip>` and `http://<prod-eip>` | all PASS, exit 0 |
+| A1 | App | Smoke tests on both servers | `bash deploy/smoke-test.sh http://<test-eip> <commit>` and the same for `<prod-eip>`; `<commit>` is the build's 7-character tag | all PASS (including the commit check), exit 0 |
 | A2 | App | The deployed build is the one we pushed | `curl http://<prod-eip>/api/health` | `"commit"` = the build's commit |
 | A3 | App | Automatic rollback | Role 3 §6 demo C on the test server: `./deploy.sh <repo> doesnotexist` | *Automatic rollback*; previous release keeps serving |
 | A4 | App | Level 4 change appears | Change `RELEASE` / the visible version label, push, approve | new value on production without manual copying |

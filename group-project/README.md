@@ -9,9 +9,11 @@ This folder turns the project brief into work. Each role has its own step-by-ste
 | **3. Application and testing** | [role-3-application-testing.md](role-3-application-testing.md) | Repository changes (Dockerfile, health endpoint…), test stages, smoke tests, Level 4 demo | 1, 3, 4 |
 | **4. Monitoring, testing and maintenance** | [role-4-monitoring-documentation.md](role-4-monitoring-documentation.md) | Prometheus/Grafana on production; acceptance and fault tests of every part; the issues log and issue write-ups; maintenance checks; success metrics | 2 + testing of all |
 
-`repo-files/` holds every file to add to the [frog-management](https://github.com/NhatNguyen2407/frog-management)
-repository (same paths as in that repo), and `devops-pipeline.patch` is the same change as one patch.
-Role 3 commits them there (step 3 of their guide). It implements the pipeline described in our submitted project brief.
+**Application repository:** the private coursework copy [frog-management-swe40006](https://github.com/NhatNguyen2407/frog-management-swe40006) (ask its owner, Minh Nhat,
+for access). Role 3 committed the pipeline files there on 14 Nov – see [role-3-progress.md](role-3-progress.md).
+`repo-files/` is the kit's reference copy of those files (same paths), and `devops-pipeline.patch` the same change
+against the upstream frog-management repository. `monitoring/` is added to the coursework repository by Role 4's
+[pull request #1](https://github.com/NhatNguyen2407/frog-management-swe40006/pull/1); `infra/` is still only in this kit.
 
 **Testing, issues and the report:** [testing-and-report-plan.md](testing-and-report-plan.md) – who records what, the
 shared issues log, the acceptance and fault tests, and which member writes which report section. Every member writes
@@ -69,7 +71,7 @@ the report section for the part they built; Role 4 tests every part and writes u
 | Test server Elastic IP / private IP | / |
 | Production server Elastic IP / private IP | / |
 | Docker Hub repository (e.g. `ourteam/frog-app`) | |
-| GitHub repository | https://github.com/NhatNguyen2407/frog-management |
+| GitHub repository | https://github.com/NhatNguyen2407/frog-management-swe40006 (private) |
 | Grafana URL `http://<prod-ip>:3000/` | |
 
 ## Ground rules

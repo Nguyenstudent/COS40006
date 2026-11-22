@@ -21,8 +21,10 @@ What runs on the production server (all in `monitoring/compose.yaml`, next to th
 
 ## 1. Deploy the monitoring stack
 
-**[PS]** from your clone of the repository (after the devops files are merged), copy the folder to production:
+**[PS]** clone the coursework repository (private – you need access from its owner) and copy the folder to production:
 ```powershell
+git clone https://github.com/NhatNguyen2407/frog-management-swe40006.git
+cd frog-management-swe40006
 scp -r monitoring ec2-user@<prod-elastic-ip>:~/
 ssh ec2-user@<prod-elastic-ip>
 ```
@@ -39,6 +41,14 @@ free -h                        # memory still has headroom on the t3.small
 
 > You can do this before the app is deployed – the health probe will simply show *down* until Role 2's first
 > production deployment.
+>
+> Until [pull request #1](https://github.com/NhatNguyen2407/frog-management-swe40006/pull/1) is merged, `monitoring/` is only in this kit. Download it straight onto the
+> server instead: `curl -sL https://github.com/Nguyenstudent/COS40006/archive/refs/heads/main.tar.gz | tar xz
+> --strip-components=4 -C ~/monitoring COS40006-main/group-project/repo-files/monitoring`.
+>
+> **Updating later:** copy the changed files the same way; `.env` is not in Git, so it is kept. `docker compose up -d`
+> does not notice changed configuration files, so restart the services that read them:
+> `docker compose restart prometheus blackbox grafana`.
 
 ## 2. Check Prometheus is scraping
 
