@@ -1,11 +1,14 @@
 # Role 3 – Application and testing lead
 
-**You own:** the changes to the frog-management repository that make it deployable, the quality gates
+**You own:** the changes to the frog-management-swe40006 coursework repository that make it deployable, the quality gates
 (type check, format check, unit tests, database tests), the smoke tests, and the Level 4 demonstration.
 **Levels:** 1 (test stages), 3 (application deployed and verified), 4 (code change → new deployment).
 **You need:** Node.js 24 and Git on your laptop; write access to the GitHub repository; Docker Desktop for
 step 5 (optional).
 **You hand over:** H4 – the changes merged into `main`, so Role 2 can create the pipeline job.
+
+Current implementation, local results and H4 source: [Role 3 progress](role-3-progress.md).
+Report contribution: [section 4 draft](report/role-3-application-testing-draft.md).
 
 ---
 
@@ -13,8 +16,8 @@ step 5 (optional).
 
 ```powershell
 git config --global core.autocrlf input          # keep LF endings (see step 2)
-git clone https://github.com/NhatNguyen2407/frog-management.git
-cd frog-management
+git clone https://github.com/NhatNguyen2407/frog-management-swe40006.git
+cd frog-management-swe40006
 node --version                                    # must be v24.x  (nodejs.org → 24 LTS installer)
 npm ci
 npm run typecheck                                 # passes
@@ -88,7 +91,7 @@ Already verified on Node 24.22.2: typecheck ✓, 55 unit tests ✓, standalone b
 | Static checks | `npm run typecheck`, `npm run format:check` | the code compiles and follows the agreed style |
 | Unit tests | `node --test` with spec + JUnit reporters (same files as `npm test`) | business rules (finance, stock, formatting, prototype flows); results appear under *Test Result* in Jenkins |
 | Database tests | `npm run test:db` | migrations + row-level-security rules work on a real `postgres:17` (disposable container, changes rolled back) |
-| Smoke test: test / Verify production | `bash deploy/smoke-test.sh http://<host>` | the deployed container serves the app |
+| Smoke test: test / Verify production | `bash deploy/smoke-test.sh http://<host> <expected-commit>` | the deployed container serves the app |
 
 Run the database test once locally if Docker Desktop works: `docker pull postgres:17` then `npm run test:db`
 → "Database schema and permission assertions passed". 📷 it.
@@ -100,7 +103,7 @@ Needs Docker Desktop. On Kiet's PC port 8080 is taken by PostgreSQL's Apache, so
 docker build --build-arg GIT_SHA=local -t frog-app:local .
 docker run --rm -d --name frog -p 8090:3000 frog-app:local
 docker ps                                  # STATUS shows (healthy) after ~30 s
-bash deploy/smoke-test.sh http://localhost:8090      # Git Bash
+bash deploy/smoke-test.sh http://localhost:8090 local # Git Bash; expected commit matches GIT_SHA
 docker rm -f frog
 ```
 📷 `docker ps` showing *(healthy)* and the smoke test PASS lines.
